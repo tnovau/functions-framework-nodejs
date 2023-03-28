@@ -12,7 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import {HttpFunction, CloudEventFunction, HandlerFunction} from './functions';
+import { Request, Response } from 'express';
+import {HttpFunction, CloudEventFunction, HandlerFunction, TypedFunction, TypedInvocationFormat} from './functions';
 import {SignatureType} from './types';
 
 interface RegisteredFunction<T> {
@@ -93,4 +94,67 @@ export const cloudEvent = <T = unknown>(
   handler: CloudEventFunction<T>
 ): void => {
   register(functionName, 'cloudevent', handler);
+};
+
+/** Options bag for typed function registration. */
+interface TypedFunctionOptions<T, U> {
+  // Function registered to handle invocations.
+  handler: TypedFunction<T, U>,
+  // Optional formatter responsible for decoding the request and encoding the 
+  // response.
+  format?: TypedInvocationFormat<T, U>,
+}
+
+/** 
+ * JsonFormat is the default implementation of request deserialization and 
+ * result serialization.
+ */
+class JsonFormat<T, U> implements TypedInvocationFormat<T, U> {
+  deserializeRequest(request: Request): T {
+    if (typeof request.body !== "object") {
+      throw new Error("request is not valid JSON or Content-Type header is set incorrectly");
+    }
+    return request.body as T;
+  }
+
+  serializeResponse(response: Response, result: U): void {
+    response.header("content-type", "application/json");
+    response.end(JSON.stringify(result));
+  }
+}
+
+/**
+ * Register a typed function that handles invocations.
+ * @param functionName - the name of the function.
+ * @param optOrHandler - the function to invoke when handling requests or an options bag of 
+ * additional configuration.
+ */
+export const typed = <T, U>(functionName: string, optOrHandler: TypedFunction<T, U> | TypedFunctionOptions<T, U>): void => {
+  let opt: TypedFunctionOptions<T, U> = optOrHandler instanceof Function ? {
+    handler: optOrHandler,
+  } : optOrHandler;
+
+  const format = opt.format || new JsonFormat<T, U>();
+
+  register(functionName, "typed", async (req: Request, res: Response): Promise<any> => {
+    let parsed: T;
+    try {
+      const ret = format.deserializeRequest(req);
+      if (ret instanceof Promise) {
+        parsed = await ret;
+      } else {
+        parsed = ret;
+      }
+    } catch (e) {
+      res.status(400).end("400 Bad Request");
+      return;
+    }
+    
+    let ret = await opt.handler(parsed);
+
+    const promiseOrVoid: Promise<void> | void = format.serializeResponse(res, ret);
+    if (promiseOrVoid instanceof Promise) {
+      await promiseOrVoid;
+    }
+  });
 };

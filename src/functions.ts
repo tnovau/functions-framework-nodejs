@@ -75,6 +75,22 @@ export interface CloudEventFunctionWithCallback<T = unknown> {
   (cloudEvent: CloudEvent<T>, callback: Function): any;
 }
 /**
+ * A strongly typed function with an explicit request and result type.
+ */
+export interface TypedFunction<T = unknown, U = unknown> {
+  (request: T): U | Promise<U>;
+}
+
+/**
+ * A serialization format for a strongly typed functions request and response
+ * types.
+ */
+export interface TypedInvocationFormat<T, U> {
+  deserializeRequest(request: Request): T | Promise<T>;
+  serializeResponse(response: Response, result: U): void | Promise<void>;
+}
+
+/**
  * A function handler.
  * @public
  */

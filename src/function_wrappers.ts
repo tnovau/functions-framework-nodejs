@@ -203,7 +203,8 @@ export const wrapUserFunction = <T = unknown>(
 ): RequestHandler => {
   switch (signatureType) {
     case 'http':
-      return wrapHttpFunction(userFunction as HttpFunction);
+    case 'typed':
+        return wrapHttpFunction(userFunction as HttpFunction);
     case 'event':
       // Callback style if user function has more than 2 arguments.
       if (userFunction!.length > 2) {
